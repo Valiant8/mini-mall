@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String     @id @default(uuid())
+  email           String     @unique
+  name            String
+  password        String
+  role            String     @default("user") // user | admin
+  totalSpent      Float      @default(0)      // 累计消费金额
+  membershipLevel Int        @default(0)      // 0=普通用户, 1=心悦1, 2=心悦2, 3=心悦3
+  createdAt       DateTime   @default(now())
+  orders          Order[]
+  cartItems       CartItem[]
+}
+
+model MembershipTier {
+  id       Int    @id @default(autoincrement())
+  level    Int    @unique
+  name     String           // "心悦1级"
+  minSpent Float            // 累计消费门槛
+  discount Float            // 折扣率，0.95 = 9.5折
+}
+
+model Category {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  slug     String    @unique
+  products Product[]
+}
+
+model Product {
+  id          String      @id @default(uuid())
+  name        String
+  description String      @default("")
+  price       Float
+  imageUrl    String?
+  stock       Int         @default(0)
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id])
+  createdAt   DateTime    @default(now())
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+}
+
+model CartItem {
+  id        String  @id @default(uuid())
+  quantity  Int     @default(1)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  status        String      @default("pending") // pending | paid | shipped | completed | cancelled
+  originalTotal Float
+  discount      Float       @default(0)
+  total         Float
+  createdAt     DateTime    @default(now())
+  items         OrderItem[]
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Float // 下单时的单价
+}
