@@ -109,47 +109,77 @@ export async function PUT(
     return NextResponse.json({ order: result });
   }
 
-  // 模拟支付：PENDING → PAID
-  if (order.status !== "pending") {
+  // 模拟支付：事务内原子完成状态更新 + 累计消费 + 会员升级
+  const result = await prisma.$transaction(async (tx) => {
+    // 原子条件更新：仅当状态为 pending 时才更新为 paid
+    const paid = await tx.order.updateMany({
+      where: { id, status: "pending" },
+      data: { status: "paid" },
+    });
+
+    if (paid.count === 0) {
+      return null; // 已被并发操作处理或状态已变更
+    }
+
+    // 查询更新后的订单
+    const updated = await tx.order.findUnique({
+      where: { id },
+      include: {
+        items: {
+          include: {
+            product: { select: { id: true, name: true, imageUrl: true } },
+          },
+        },
+      },
+    });
+
+    if (!updated) return null;
+
+    // 原子累加累计消费（避免读-改-写丢失更新）
+    await tx.user.update({
+      where: { id: user.id },
+      data: { totalSpent: { increment: order.total } },
+    });
+
+    // 重新读取用户的累计消费，检查会员升级
+    const userAfter = await tx.user.findUnique({
+      where: { id: user.id },
+      select: { totalSpent: true, membershipLevel: true },
+    });
+
+    if (!userAfter) return null;
+
+    const tiers = await tx.membershipTier.findMany({
+      orderBy: { level: "desc" },
+    });
+
+    let newLevel = userAfter.membershipLevel;
+    for (const tier of tiers) {
+      if (userAfter.totalSpent >= tier.minSpent && tier.level > newLevel) {
+        newLevel = tier.level;
+        break;
+      }
+    }
+
+    if (newLevel !== userAfter.membershipLevel) {
+      await tx.user.update({
+        where: { id: user.id },
+        data: { membershipLevel: newLevel },
+      });
+    }
+
+    return {
+      order: updated,
+      membershipUpgraded: newLevel > (order.user.membershipLevel ?? 0) ? newLevel : null,
+    };
+  });
+
+  if (!result) {
     return NextResponse.json(
-      { error: `当前状态 ${order.status}，无法支付` },
-      { status: 400 }
+      { error: "支付失败，订单状态已变更" },
+      { status: 409 }
     );
   }
 
-  const updated = await prisma.order.update({
-    where: { id },
-    data: { status: "paid" },
-    include: {
-      items: {
-        include: {
-          product: { select: { id: true, name: true, imageUrl: true } },
-        },
-      },
-    },
-  });
-
-  // 更新累计消费并检查会员升级
-  const newTotalSpent = order.user.totalSpent + order.total;
-  const tiers = await prisma.membershipTier.findMany({
-    orderBy: { level: "desc" },
-  });
-
-  let newLevel = order.user.membershipLevel;
-  for (const tier of tiers) {
-    if (newTotalSpent >= tier.minSpent && tier.level > newLevel) {
-      newLevel = tier.level;
-      break;
-    }
-  }
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { totalSpent: newTotalSpent, membershipLevel: newLevel },
-  });
-
-  return NextResponse.json({
-    order: updated,
-    membershipUpgraded: newLevel > order.user.membershipLevel ? newLevel : null,
-  });
+  return NextResponse.json(result);
 }

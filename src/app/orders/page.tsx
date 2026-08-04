@@ -34,16 +34,23 @@ export default function OrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const loadOrders = useCallback(async () => {
-    const res = await fetch("/api/orders");
-    if (res.status === 401) {
-      router.push("/auth/login?callbackUrl=/orders");
-      return;
+    try {
+      const res = await fetch("/api/orders");
+      if (res.status === 401) {
+        router.push("/auth/login?callbackUrl=/orders");
+        return;
+      }
+      if (!res.ok) throw new Error("加载失败");
+      const data = await res.json();
+      setOrders(data.orders);
+    } catch {
+      setError("加载订单列表失败");
+    } finally {
+      setLoading(false);
     }
-    const data = await res.json();
-    setOrders(data.orders);
-    setLoading(false);
   }, [router]);
 
   useEffect(() => {
@@ -62,6 +69,13 @@ export default function OrdersPage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4">
         <h1 className="text-2xl font-bold mb-8">我的订单</h1>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            {error}
+            <button onClick={() => { setError(""); loadOrders(); }} className="ml-2 underline hover:no-underline">重试</button>
+          </div>
+        )}
 
         {orders.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-xl border">

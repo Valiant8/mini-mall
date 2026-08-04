@@ -88,7 +88,7 @@ prisma/
 ---|---|---|---
 心悦1级 | ¥9,000 | 0.95 | 9.5折
 心悦2级 | ¥12,000 | 0.85 | 8.5折
-心悦3级 | ¥14,000 | 0.95 | 6.5折
+心悦3级 | ¥14,000 | 0.65 | 6.5折
 
 核心逻辑（**所有数值从 `MembershipTier` 表读取，不硬编码**）：
 1. 下单时 —— 查 `User.membershipLevel` → 查 `MembershipTier.discount` → 计算 `Order.discount` 和 `Order.total`
