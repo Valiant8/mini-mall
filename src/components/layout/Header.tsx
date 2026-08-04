@@ -43,6 +43,12 @@ export function Header() {
             购物车
           </Link>
 
+          {user && (
+            <Link href="/orders" className="hover:text-blue-600 transition-colors">
+              我的订单
+            </Link>
+          )}
+
           {user === undefined ? (
             // 加载中
             <span className="text-gray-400">...</span>
